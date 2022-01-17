@@ -1,0 +1,114 @@
+<form action="/settings">
+    <div class="form-row">
+        <div class="form-group col-md-6">
+            <label for="settings-ssid">SSID</label>
+            <input class="form-control" name="ssid" oninput="enableSave()" id="settings-ssid"
+                placeholder="Enter SSID to connect to">
+        </div>
+        <div class="form-group  col-md-6">
+            <label for="settings-password">Password</label>
+            <input type="password" name="password" oninput="enableSave()" class="form-control" id="settings-password"
+                placeholder="Enter password">
+        </div>
+        <div class="form-group  col-md-6">
+            <label for="settings-ipaddr">Fixed IP Address</label>
+            <input class="form-control" oninput="enableSave()" id="settings-ipaddr" name="addr"
+                placeholder="192.168.1.101" type="text" minlength="7" maxlength="15" size="15"
+                pattern="^((\d{1,2}|1\d\d|2[0-4]\d|25[0-5])\.){3}(\d{1,2}|1\d\d|2[0-4]\d|25[0-5])$">
+        </div>
+        <div class="form-group  col-md-6">
+            <label for="settings-gatewayaddr">Gateway IP Address</label>
+            <input class="form-control" oninput="enableSave()" id="settings-gatewayaddr" name="gateway"
+                placeholder="192.168.1.250" type="text" minlength="7" maxlength="15" size="15"
+                pattern="^((\d{1,2}|1\d\d|2[0-4]\d|25[0-5])\.){3}(\d{1,2}|1\d\d|2[0-4]\d|25[0-5])$">
+        </div>
+        <div class="form-group  col-md-6">
+            <label for="settings-proxyaddr">Reverse Proxy IP Address (external access)</label>
+            <input class="form-control" type="text" id="settings-proxyaddr" name="proxy" placeholder="192.168.1.130"
+                minlength="7" maxlen0gth="15" size="15"
+                pattern="^((\d{1,2}|1\d\d|2[0-4]\d|25[0-5])\.){3}(\d{1,2}|1\d\d|2[0-4]\d|25[0-5])$">
+        </div>
+    </div>
+    <button id="settings-save" type="button" onclick="submitSettings()" class="btn btn-primary mt-5  mb-3"
+        disabled="true">
+        Save
+    </button>
+    <button type="button" class="btn btn-primary mt-5 mb-3" onclick="reboot()">Reboot</button>
+</form>
+
+<!--Load existing settings-->
+<script>
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function () {
+        if (this.readyState == 4 && this.status == 200) {
+            if (this.responseText.length > 0) {
+                var settings = JSON.parse(this.responseText);
+                if (settings) {
+                    document.getElementById("settings-ssid").value = settings["ssid"];
+                    document.getElementById("settings-ipaddr").value = settings["ipaddr"];
+                    document.getElementById("settings-gatewayaddr").value = settings["gatewayaddr"];
+                    document.getElementById("settings-proxyaddr").value = settings["proxyaddr"];
+                }
+            }
+        } else {
+            document.getElementById("settings-proxyaddr").value = "0.0.0.0";
+        }
+    };
+    xhttp.open("GET", 'read-settings', true);
+    xhttp.send();
+
+    // Enable the Save button when SSID and password are set.
+    function enableSave() {
+        var ssid = document.getElementById("settings-ssid").value;
+        var pass = document.getElementById("settings-password").value;
+        var ip = document.getElementById("settings-ipaddr").value;
+        var gateway = document.getElementById("settings-gatewayaddr").value;
+        if (ssid.length > 0 && pass.length > 0 && ip.length > 0 && gateway.length > 0) {
+            document.getElementById("settings-save").disabled = false;
+        } else {
+            document.getElementById("settings-save").disabled = true;
+        }
+    }
+
+    function submitSettings() {
+        var xhttpSubmit = new XMLHttpRequest();
+        xhttpSubmit.onreadystatechange = function () {
+            if (this.readyState == 4) {
+                if (this.status == 200) {
+                    window.alert("New settings saved - reboot to apply settings");
+                } else {
+                    // Failed, go back to settings
+                    window.alert("Update settings failed!");
+                }
+            }
+        };
+        var payload = {
+            "ssid": document.getElementById("settings-ssid").value,
+            "password": document.getElementById("settings-password").value,
+            "ipaddr": document.getElementById("settings-ipaddr").value,
+            "gatewayaddr": document.getElementById("settings-gatewayaddr").value,
+            "proxyaddr": document.getElementById("settings-proxyaddr").value,
+        };
+
+        xhttpSubmit.open("POST", "update-settings", true);
+        xhttpSubmit.setRequestHeader("Content-Type", "application/json");
+        xhttpSubmit.send(JSON.stringify(payload));
+    }
+
+    function reboot() {
+        var xhttp = new XMLHttpRequest();
+        xhttp.open('POST', 'reboot', true);
+        xhttp.setRequestHeader('Content-type', 'text/plain');
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4) {
+                if (this.status == 200) {
+                    window.alert(this.responseText);
+                } else {
+                    window.alert("Failed (" + this.status.toString() + ")");
+                }
+            }
+        };
+        xhttp.send();
+    }
+//# sourceURL=settings.html
+</script>

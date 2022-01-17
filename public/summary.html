@@ -1,0 +1,251 @@
+<div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-5">
+    <div class="col-lg-4 col-md-6 col-sm-9 mb-4">
+        <div class="card">
+            <h5 class="card-header">Temperature</h5>
+            <div class="card-body">
+                <div id="gauge_te" style="height: 200px"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4 col-md-6 col-sm-9 mb-4">
+        <div class="card">
+            <h5 class="card-header">Control</h5>
+            <div class="card-body">
+                <div class="container" style="height: 200px">
+                    <div class="form-check form-switch m-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="summary-auto-check"
+                            style="transform: scale(2.0);" onclick="toggleAutomatic()" />
+                        <label class="form-check-label h6" for="summary-auto-check"
+                            style="margin-left: 20px;">Automatic</label>
+                    </div>
+                    <div class="form-check form-switch m-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="summary-heater-check"
+                            style="transform: scale(2.0);" onclick="toggleHeater()" />
+                        <label class="form-check-label h6" for="summary-heater-check"
+                            style="margin-left: 20px;">Heater</label>
+                    </div>
+                    <div class="form-check form-switch m-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="summary-jets-check"
+                            style="transform: scale(2.0);" onclick="toggleJets()" />
+                        <label class="form-check-label h6" for="summary-jets-check" style="margin-left: 20px;">Jets</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4 col-md-6 col-sm-9 mb-4">
+        <div class="card">
+            <h5 class="card-header">Setpoint</h5>
+            <div class="card-body">
+                <div class="container" style="height: 200px">
+                    <div class="row p-2 justify-content-start">
+                        <div class="form-group col-md-6">
+                            <label for="summary-setpoint">Setpoint</label>
+                            <input class="form-control" name="summary-setpoint" oninput="updateSetpoint()"
+                                id="summary-setpoint" type="number" min="25" max="45" value="38">
+                        </div>
+                    </div>
+                    <div class="row p-2 justify-content-start">
+                        <div class="col-4">Ready by</div>
+                        <div class="col-4">00:00</div>
+                    </div>
+                    <div class="row p-2 justify-content-start">
+                        <div class="col-4">Time Remaining</div>
+                        <div class="col-4">00:00</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+
+    window.toggles["cs"] = document.getElementById("summary-auto-check");
+    window.toggles["js"] = document.getElementById("summary-jets-check");
+    window.toggles["hs"] = document.getElementById("summary-heater-check");
+    window.inputs["sp"] = document.getElementById("summary-setpoint");
+
+    var gaugeOptions = {
+        chart: {
+            type: 'solidgauge'
+        },
+
+        title: null,
+
+        pane: {
+            center: ['50%', '85%'],
+            size: '140%',
+            startAngle: -90,
+            endAngle: 90,
+            background: {
+                backgroundColor:
+                    Highcharts.defaultOptions.legend.backgroundColor || '#EEE',
+                innerRadius: '60%',
+                outerRadius: '100%',
+                shape: 'arc'
+            }
+        },
+
+        exporting: {
+            enabled: false
+        },
+
+        tooltip: {
+            enabled: false
+        },
+
+        // the value axis
+        yAxis: {
+            stops: [
+                [0.1, '#55BF3B'], // green
+                [0.5, '#DDDF0D'], // yellow
+                [0.9, '#DF5353'] // red
+            ],
+            lineWidth: 0,
+            minorTickInterval: null,
+            tickPixelInterval: null,
+            tickWidth: 0,
+            title: {
+                y: -70
+            },
+            labels: {
+                y: 16
+            }
+        },
+
+        plotOptions: {
+            solidgauge: {
+                dataLabels: {
+                    y: 5,
+                    borderWidth: 0,
+                    useHTML: true
+                }
+            }
+        }
+    };
+
+    window.gauges["te"] = getGauge('gauge_te', gaugeOptions, 25, 45, "Temperature", "&deg;C");
+
+    function getGauge(id, options, min, max, label, units) {
+        var c = Highcharts.chart(id, Highcharts.merge(options, {
+            yAxis: {
+                min: min,
+                max: max,
+                title: {
+                    text: ""
+                }
+            },
+
+            credits: {
+                enabled: false
+            },
+
+            series: [{
+                name: label,
+                data: [0],
+                dataLabels: {
+                    format: '<div style="text-align:center"><span style="font-size:25px;color:' +
+                        ((Highcharts.theme && Highcharts.theme.contrastTextColor) || 'black') + '">{y}</span><br/>' +
+                        '<span style="font-size:12px;color:silver">' + units + '</span></div>'
+                },
+                tooltip: {
+                    valueSuffix: ' ' + units
+                }
+            }]
+        }));
+        return c;
+    }
+
+    function toggleAutomatic() {
+        var state = setToggleEnabledState();
+        var xhttp = new XMLHttpRequest();
+        xhttp.open('POST', 'update?param=auto&value=' + state, true);
+        xhttp.setRequestHeader('Content-type', 'text/plain');
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4) {
+                if (this.status != 200) {
+                    window.alert("Failed (" + this.status.toString() + ")");
+                }
+                window.toggleUpdatesPending--;
+                if (window.toggleUpdatesPending < 0) { window.toggleUpdatesPending = 0; }
+            }
+        };
+        xhttp.send();
+        window.toggleUpdatesPending++;
+    }
+
+    function toggleJets() {
+        var xhttp = new XMLHttpRequest();
+        var state;
+        if (window.toggles['js'].checked) {
+            state = "1";
+        } else {
+            state = "0";
+        }
+
+        xhttp.open('POST', 'update?param=jets&value=' + state, true);
+        xhttp.setRequestHeader('Content-type', 'text/plain');
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4) {
+                if (this.status != 200) {
+                    window.alert("Failed (" + this.status.toString() + ")");
+                }
+                window.toggleUpdatesPending--;
+                if (window.toggleUpdatesPending < 0) { window.toggleUpdatesPending = 0; }
+            }
+        };
+        xhttp.send();
+        window.toggleUpdatesPending++;
+    }
+
+    function toggleHeater() {
+        var xhttp = new XMLHttpRequest();
+        var state;
+        if (window.toggles['hs'].checked) {
+            state = "1";
+        } else {
+            state = "0";
+        }
+        xhttp.open('POST', 'update?param=heater&value=' + state, true);
+        xhttp.setRequestHeader('Content-type', 'text/plain');
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4) {
+                if (this.status != 200) {
+                    window.alert("Failed (" + this.status.toString() + ")");
+                }
+                window.toggleUpdatesPending--;
+                if (window.toggleUpdatesPending < 0) { window.toggleUpdatesPending = 0; }
+            }
+        };
+        xhttp.send();
+        window.toggleUpdatesPending++;
+    }
+
+    function updateSetpoint() {
+        var xhttp = new XMLHttpRequest();
+        xhttp.open('POST', 'update?param=setpoint&value=' + window.inputs['sp'].value, true);
+        xhttp.setRequestHeader('Content-type', 'text/plain');
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4) {
+                if (this.status != 200) {
+                    window.alert("Failed (" + this.status.toString() + ")");
+                }
+            }
+        };
+        xhttp.send();
+    }
+
+    function setToggleEnabledState() {
+        if (window.toggles['cs'].checked) {
+            // Auto mode, disable Heater control 
+            window.toggles['hs'].disabled = true;
+            return "1";
+        } else {
+            window.toggles['hs'].disabled = false;
+            return "0";
+        }
+    }
+//# sourceURL=summary.html
+</script>

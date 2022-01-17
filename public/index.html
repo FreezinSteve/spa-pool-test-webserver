@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="description" content="" />
+    <meta name="author" content="" />
+    <title>The de Lima's Party Spa Pool</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <!-- Core theme CSS (includes Bootstrap)-->
+    <link href="styles.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div class="jumbotron vertical-center text-center">
+        <h1 class="display-4">Spa Pool Controller</h1>
+        <p class="lead">Loading components for application</p>
+        <hr class="my-4">
+        <p id="progress">Loading...</p>\
+        <p id="errors"></p>
+        <div class="spinner-border text-primary" role="status"></div>
+    </div>
+</body>
+<script>
+    var version = "1.00";
+    //=========================================================
+    // Bootloader variables
+    // Load the components 1 by 1 so that we don't hammer the ESP
+    // which can only handle 4 request at a time
+    var sources = [
+        "jquery.min.js",
+        "bootstrap.bundle.min.js",
+        "feather.min.js",
+        "highcharts.js",
+        "highcharts-more.js",
+        "solid-gauge.js"
+    ];
+    var currFile = 0;
+    var progress = document.getElementById("progress");
+    progress.innerHTML = "";
+    var errors = document.getElementById("errors");
+    //===========================================================
+    // Main application variables
+    // Global variables
+    // of the element matches the id of the channel in the webservice
+    var gauges = {};            // Dictionary of summary gauges
+    var toggles = {};           // Dictionary of toggle switches
+    var inputs = {};            // Dictionary of input boxes
+    var moduleDateTime;
+    var toggleUpdatesPending = 0;       // Number of toggle tasks pending
+
+    checkVersion();
+    getNextFile();
+
+    // Format date/time e.g Fri 13/10/2021
+    function formatDate(dateTime) {
+        var dayName = days[dateTime.getDay()];
+        var day = dateTime.getDate();
+        var month = dateTime.getMonth() + 1;
+        var year = dateTime.getFullYear();
+        return dayName + ' ' + day.toString() + '/' + month.toString() + '/' + year.toString();
+    }
+    //==========================================================
+    function checkVersion() {
+        var storedVersion = localStorage.getItem("Version");
+        if (!storedVersion) {
+            localStorage.setItem("Version", version);
+        } else {
+            if (version != storedVersion) {
+                // New version, erase old data
+                localStorage.clear();
+                localStorage.setItem("Version", version);
+                progress.innerHTML = "New version!<br>"
+            }
+        }
+    }
+    //==========================================================
+    function getNextFile() {
+        if (currFile < sources.length) {
+            getScriptResource(sources[currFile]);
+        } else {
+            // Wait 1/2 second before loading main page or it looks glitchy when loaded from cache
+            setTimeout(() => {
+                getMainPage();
+            }, 500);
+        }
+    }
+    //==========================================================
+    function getScriptResource(scriptFile) {
+        var data = localStorage.getItem(scriptFile);
+        if (!data) {
+            var req = new XMLHttpRequest();
+            progress.innerHTML += "Downloading: " + scriptFile + "<br>";
+            req.addEventListener('readystatechange', function (e) {
+                if (req.readyState == 4 && req.status == 200) {
+                    // Downloading has finished
+                    addScript(req.response);
+                    // save to local storage
+                    localStorage.setItem(scriptFile, req.response);
+                    currFile++;
+                    getNextFile();
+                } else if (req.readyState == 4) {
+                    // Failed
+                    notifyFailed(scriptFile);
+                    getNextFile();
+                }
+            });
+            req.responseType = 'text';
+            req.open('GET', scriptFile);
+            req.send();
+        } else {
+            progress.innerHTML += "Loaded from cache: " + scriptFile + "<br>";
+            addScript(data);
+            currFile++;
+            getNextFile();
+        }
+    }
+    //==========================================================
+    function addScript(js) {
+        var script = document.createElement('script');
+        script.innerHTML = js;
+        document.body.appendChild(script);
+    }
+    //==========================================================
+    function getMainPage() {
+        var xhttp = new XMLHttpRequest();
+        xhttp.open('GET', 'app.html', true);
+        xhttp.setRequestHeader('Content-type', 'text/plain');
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4) {
+                if (this.status == 200) {
+                    $('body').html(this.responseText);
+                    runApp();
+                } else {
+                    window.alert("Failed (" + this.status.toString() + ")");
+                }
+            }
+        };
+        xhttp.send();
+    }
+    //==========================================================
+    function notifyFailed(source) {
+        // Add to UI
+        errors.innerHTML += "Error: Failed to load: " + source + "<br>";
+    }
+    //====================================================
+    // Run the main application
+    function runApp() {
+
+        feather.replace();
+        initSidebar();
+
+        $(document).ready(function () {
+
+            loadSummary();
+            initClickHandlers();
+            // Get the status as soon as possible
+            getStatus();
+            /* Fast update timer, update current instantaneous reading */
+            setInterval(getStatus, 5000);
+
+            initViewPortChangeHandler();
+        });
+    }
+
+    //====================================================
+    function loadSummary() {
+        // Automatically load the summary page
+        $('#main-body').load('summary.html', null, function (data, status, jqXGR) {
+            // callback function
+            feather.replace();
+        });
+    }
+    //====================================================
+    function initClickHandlers() {
+        /* create event handler that loads content into main area when navigation link is clicked */
+        $('#link-summary').click(function () {
+            $('#main-body').load('summary.html', null, function (data, status, jqXGR) {
+                // callback function
+                feather.replace();
+                // Ensure we start at zero! Could be pending updates that don't get completed before page is changed
+                toggleUpdatesPending = 0;
+            });
+            logChannelId = "";
+            autoCloseSidebar();
+        });
+
+        // Settings blocked if external 
+        if ($('#link-settings').length) {
+            $('#link-settings').click(function () {
+                $('#main-body').load('settings.html');
+                autoCloseSidebar();
+                logChannelId = "";
+            });
+        }
+    }
+    //====================================================
+    function getStatus() {
+        var xhttpTime = new XMLHttpRequest();
+        xhttpTime.onreadystatechange = function () {
+            if (this.readyState == 4 && this.status == 200) {
+                updateSummary(this.responseText);
+            }
+        };
+        xhttpTime.open("GET", "status", true);
+        xhttpTime.send();
+    }
+    //====================================================
+    // Parse JSON from status response a load to cache
+    function updateSummary(json) {
+        var status = JSON.parse(json);
+        for (key in status) {
+            if (status.hasOwnProperty(key)) {
+                var x = new Date(status["dt"]).getTime();
+                var val = status[key];
+
+                // Keep a global reference of the current date/time
+                moduleDateTime = x;
+
+                switch (key) {
+                    case "dt":
+                        // Remove "T" from ISO date/time
+                        document.getElementById("latest_dt").innerHTML = val.replace("T", " ");
+                        checkTime(val);
+                        break;
+                    case "te":
+                        var g = gauges["te"];
+                        var y = parseFloat(val);
+                        point = g.series[0].points[0];
+                        point.update(Math.round(y * 10) / 10);
+                        break;
+                    case "sp":
+                        inputs["sp"].value = val;
+                        break;
+                    case "ts":
+                        // Time to reach setpoint
+                        break;
+                    case "cs":
+                        if (toggleUpdatesPending == 0) {
+                            // Controller state
+                            toggles["cs"].checked = (val == "1");
+                            //ugly hack - toggle doesn't fire event when set programmatically
+                            setToggleEnabledState();
+                        }
+                        break;
+                    case "js":
+                        if (toggleUpdatesPending == 0) {
+
+                            // Jets state
+                            toggles["js"].checked = (val == "1");
+                            break;
+                        }
+                    case "hs":
+                        if (toggleUpdatesPending == 0) {
+                            // Heater state
+                            toggles["hs"].checked = (val == "1");
+                            break;
+                        }
+                }
+            }
+        }
+    }
+
+    function checkTime(currDateTime) {
+        var systemTime = new Date();
+        var systemTicks = systemTime.getTime();
+        var spaTicks = Date.parse(currDateTime);
+        var diff  =Math.abs(systemTicks - spaTicks);
+        // If more than 60 seconds difference between PC and spa, set the time
+        if (diff > 60000) {
+            var datestring = + systemTime.getFullYear() + "-"
+                + ("0" + (systemTime.getMonth() + 1)).slice(-2) + "-"
+                + ("0" + systemTime.getDate()).slice(-2) + "T"
+                + ("0" + systemTime.getHours()).slice(-2) + "%3A"
+                + ("0" + systemTime.getMinutes()).slice(-2) + "%3A"
+                + ("0" + systemTime.getSeconds()).slice(-2);
+
+            // Null time, set the time to PC time (probably in AP mode so no NTP)
+            var xhttpTime = new XMLHttpRequest();
+            xhttpTime.open("POST", "set-time?time=" + datestring, true);
+            xhttpTime.send();
+        }
+    }
+
+    //====================================================
+    function getViewport() {
+        const width = Math.max(
+            document.documentElement.clientWidth,
+            window.innerWidth || 0
+        );
+        if (width <= 576) return 'xs';
+        if (width <= 768) return 'sm';
+        if (width <= 992) return 'md';
+        if (width <= 1200) return 'lg';
+        return 'xl';
+    }
+    //====================================================
+    function initViewPortChangeHandler() {
+        let viewport = getViewport();
+        let debounce;
+        $(window).resize(() => {
+            debounce = setTimeout(() => {
+                const currentViewport = getViewport();
+                if (currentViewport !== viewport) {
+                    viewport = currentViewport;
+                    $(window).trigger('newViewport', viewport);
+                }
+            }, 500);
+        });
+        $(window).on('newViewport', (viewport) => {
+            //TODO: Calculate how many windbarbs can fit in the viewport and reload windbarbs
+        });
+    }
+    //====================================================
+    function autoCloseSidebar() {
+        if (document.body.classList.contains('sb-sidenav-toggled')) {
+            document.body.classList.toggle('sb-sidenav-toggled');
+        }
+    }
+    //====================================================
+    function initSidebar() {
+        // Toggle the side navigation
+        const sidebarToggle = document.body.querySelector('#sidebarToggle');
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', event => {
+                event.preventDefault();
+                document.body.classList.toggle('sb-sidenav-toggled');
+                localStorage.setItem('sb|sidebar-toggle', document.body.classList.contains('sb-sidenav-toggled'));
+            });
+        }
+    }
+</script>
+
+</html>
