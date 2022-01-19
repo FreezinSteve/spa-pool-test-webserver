@@ -84,8 +84,7 @@ class Server(BaseHTTPRequestHandler):
             status["dt"] = datetime.now().replace(microsecond=0).isoformat()
             status["te"] = str(random.randint(200, 400) / 10)     # temperature
             status["sp"] = setpoint
-            status["ts"] = str(random.randint(0, 100000) /
-                               10)     # time to reach setpoint
+            status["ts"] = "770"
 
             # controller state 0=manual 1=auto
             # Pump state (0=off, 1=on)

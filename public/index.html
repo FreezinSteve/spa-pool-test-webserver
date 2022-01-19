@@ -235,6 +235,7 @@
                         break;
                     case "ts":
                         // Time to reach setpoint
+                        setTimeTillAtSetpoint(parseInt(val));
                         break;
                     case "cs":
                         if (toggleUpdatesPending == 0) {
@@ -262,11 +263,27 @@
         }
     }
 
+    function setTimeTillAtSetpoint(minutes) {
+        var timeLeft = new Date(minutes * 60000).toISOString().substr(11, 5);
+        var tl = document.getElementById("summary-time-remaining")
+        if (tl != null) {
+            tl.innerHTML = timeLeft;
+        }
+        var now = new Date();
+        var msLocalNow = now.getTime() + (minutes - now.getTimezoneOffset()) * 60000;
+        var readyBy = new Date(msLocalNow).toISOString()
+        readyBy = readyBy.substr(11, 5);;
+        var rb = document.getElementById("summary-ready-by")
+        if (rb != null) {
+            rb.innerHTML = readyBy;
+        }
+    }
+
     function checkTime(currDateTime) {
         var systemTime = new Date();
         var systemTicks = systemTime.getTime();
         var spaTicks = Date.parse(currDateTime);
-        var diff  =Math.abs(systemTicks - spaTicks);
+        var diff = Math.abs(systemTicks - spaTicks);
         // If more than 60 seconds difference between PC and spa, set the time
         if (diff > 60000) {
             var datestring = + systemTime.getFullYear() + "-"
